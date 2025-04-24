@@ -1,0 +1,13 @@
+{
+  "env": {
+    "browser": true,
+    "webextensions": true
+  },
+  "extends": [
+    "react-app"
+  ],
+  "rules": {
+    "no-unused-vars": "warn",
+    "no-undef": "off"
+  }
+}

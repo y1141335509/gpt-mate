@@ -1,23 +1,25 @@
-import logo from './logo.svg';
-import './App.css';
+import React, { useState, useEffect } from "react";
 
 function App() {
+  const [bookmarks, setBookmarks] = useState([]);
+
+  useEffect(() => {
+    // Ensure the chrome API is available before using it
+    if (window.chrome && chrome.storage) {
+      chrome.storage.sync.get("bookmarks", (result) => {
+        setBookmarks(result.bookmarks || []);
+      });
+    }
+  }, []);
+
   return (
-    <div className="App">
-      <header className="App-header">
-        <img src={logo} className="App-logo" alt="logo" />
-        <p>
-          Edit <code>src/App.js</code> and save to reload.
-        </p>
-        <a
-          className="App-link"
-          href="https://reactjs.org"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          Learn React
-        </a>
-      </header>
+    <div>
+      <h1>Bookmarks</h1>
+      <ul>
+        {bookmarks.map((bookmark, index) => (
+          <li key={index}>{bookmark}</li>
+        ))}
+      </ul>
     </div>
   );
 }

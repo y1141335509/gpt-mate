@@ -1,25 +1,51 @@
 {
-  "short_name": "React App",
-  "name": "Create React App Sample",
-  "icons": [
+  "manifest_version": 3,
+  "name": "ChatGPT Bookmark Extension",
+  "version": "1.0",
+  "description": "Add bookmarks to important parts of ChatGPT conversations.",
+  "permissions": [
+    "storage",
+    "identity",
+    "identity.email",
+    "activeTab"
+  ],
+  "host_permissions": [
+    "https://chat.openai.com/*",
+    "https://chatgpt.com/*",
+    "https://sheets.googleapis.com/*",
+    "https://www.googleapis.com/*",
+    "https://accounts.google.com/*"
+  ],
+  "oauth2": {
+  "client_id": "797486799565-8lguc50rquf0q36pjpf653u63felvnqf.apps.googleusercontent.com",
+  "scopes": [
+    "https://www.googleapis.com/auth/spreadsheets",
+    "https://www.googleapis.com/auth/drive.file",
+    "https://www.googleapis.com/auth/userinfo.email",
+    "https://www.googleapis.com/auth/userinfo.profile"
+    ]
+  },
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
+  "key": "MIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQCl/8u68Nx9TkkGXWLrizoraqBump+pEY9KElDF2VcCc1aHLO8gxgJXYBAVWEVxQISTDoLxTpnbrGUk6/HO7yES6+xY97BIemHDkGcEBxLf6NIjZQjp6FQp3WBwVw0geYT8Dqk55EfiTdThYOSkOVhC9q8Dw334hvIJzjs0MUrwZTqHn2hyEh5g8tbBiXHrBlEoKeuA6DnV+O1T529nlUgXb08/zL2UMzyrQmC3ji963pLEw1iV7I5gkcYijOzS+xB6cGmLMriNBVfDAILc8FIjVlZ1k9G/hSfCQUWemtqMGhRxy2YLFgJrkV8vh+EdNddCV0jNzi4fisKys7SuXawFAgMBAAECggEAFU8Ie0MTfrdXquw+eD+LVErv9Lq/D5AsPWUr/rXHVE5zd082lBWu88HmVqMZ6O+QBSOZ/flpyTfwVOS/yeFK9NeZo5MKC0fAeH73Jl51Fw6XOQltcz9KXIRpLoqSKg7HWibUpNSPwLZegx7xwr4EvTXW4gwMheRmugkB8xF3zfNvX17mBYN5qoCmHkrRrZmqdb1VbirOAEUwOMDBMhiq5WfhLoZXIQ2cTNlZMUknXXbbq10LXMsxMwgbgwDSM5HGxfS4tSNCA36Uv8NKFdYXGdsft8hECg9+5YYVH2pVATJkusOSrMmUO95JBDuIsXVOBqL0HKGYhUmVWcjfjXWFuQKBgQDni3FHp5OTx/tkkXnSM6v7oElsCzUipp3lbJTs6n0F+E7t9hPSgfz9w62K3b9abT84PKshduLStxSbTDHqXdaGc5yBHm4kCdCVaXClVPfUlzyWPW2SF5Wed5dO2mOYQ65HaVnqXmqLimQ0WiWTEST7Xq62nOX+ZEOzuVzhEB2bOQKBgQC3iB6Yy1yVaoNh4QlFxIDdQF9qj9rICMWuQEE0R8z/XRDjdIljttDRwtM1PqpN1XrdLwbuiwJ14wm27wYsEPupR2CoKylvjiKbngFngSoKPAJ0Vl3s/4j1Q6poh3LSCnviqfbSVfWZTCrxG3Z3jcvvevralNkWqxvEghemuz17LQKBgQCJILc1BZTMF8rVs6ZfDAUV38a7+yM740tt3VGRwgnLKFSub2cr65oGPAYiUNOL3Vlsl9mN1xfcTVsh4g1JzMtJE10jxv7Zzwo+ApUZBWpE+FCEddrXg6ozkIYGyCXlvmePmWAMAmC9RXe03ZKVN7kcOeXk9qTrdTv3S5crH105WQKBgBQashdUt4iaiVfQed6NnvwdkBYxOesNovHqkfnzH46dmDsCSgaFQSypJc/AVJGAIBxYiW7aBWP6gdbrKgbruVWavwjM6ZYRwNLBJTA8YumKF069Iz7R4yPSzLj0lWxSv61dpu71gZjQUiflNT31Z3CNTStigMFN7xXAlmyqOBrlAoGASYFo3ESso07vMeapuEbJxX86gxiAoCQXc1GQHqXBVfjqvo6JnpkezHfPeY+9MsnXA2ZPmq6Am9CeaWqDllup4GYHN8qdp1+K6j3iJ/yFTYhB3HA4Whn6uWiueijjNwrKEyEXx1YkGP9gyKWGjAzN6/+QAa//WBVbFUGiQSKWnLY=",
+  "content_security_policy": {
+    "extension_pages": "script-src 'self'; object-src 'self'"
+  },
+  "content_scripts": [
     {
-      "src": "favicon.ico",
-      "sizes": "64x64 32x32 24x24 16x16",
-      "type": "image/x-icon"
-    },
-    {
-      "src": "logo192.png",
-      "type": "image/png",
-      "sizes": "192x192"
-    },
-    {
-      "src": "logo512.png",
-      "type": "image/png",
-      "sizes": "512x512"
+      "matches": [
+        "https://chat.openai.com/*",
+        "https://chatgpt.com/*"
+      ],
+      "js": ["content.js"]
     }
   ],
-  "start_url": ".",
-  "display": "standalone",
-  "theme_color": "#000000",
-  "background_color": "#ffffff"
+  "web_accessible_resources": [
+    {
+      "resources": ["icons/*"],
+      "matches": ["https://chat.openai.com/*", "https://chatgpt.com/*"]
+    }
+  ]
 }
