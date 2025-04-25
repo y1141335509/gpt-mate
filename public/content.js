@@ -8,7 +8,7 @@
   // Data structure for bookmarks
   let bookmarks = {};
   let currentConversationId = null;
-  let starsVisible = false;
+  let starsVisible = true;
 
   // Initialize when DOM is ready
   if (document.readyState === 'loading') {
@@ -61,6 +61,9 @@
     createBookmarkUI();
     getCurrentConversationId();
     if (currentConversationId) loadBookmarks();
+
+    setupUrlChangeListener();
+    toggleStarsVisibility(starsVisible);
 
     // Observe DOM changes for new messages
     const observer = new MutationObserver(() => {
@@ -619,6 +622,37 @@
 
   ////////////////////////////////////////// 检查表格和csv信息 ////////////////////////////////////////////////////////////
 
+  //////////////////////////////////////// 删除drawer中的特定条目 //////////////////////////////////////////////////////////
+  // 添加一个简单的确认对话框来实现：
+  function showCustomConfirmation(message) {
+    return new Promise((resolve) => {
+      const confirmed = window.confirm(message);
+      resolve(confirmed);
+    });
+  }
+
+  // 确保 URL 发生变化时重新加载书签：
+  function setupUrlChangeListener() {
+    let lastUrl = window.location.href;
+
+    // 创建一个观察期来检测 URL 变化
+    const observer = new MutationObserver(() => {
+      if (window.location.href !== lastUrl) {
+        lastUrl = window.location.href;
+        // URL 已更改，获取新的对话 ID 病假在相应的数千
+        currentConversationId = getCurrentConversationId();
+        if (currentConversationId) {
+          loadBookmarks();
+        } else {
+          // 如果不在对话页面，清空书签列表
+          populateBookmarkList([]);
+        }
+      }
+    });
+    observer.observe(document.body, { childList: true, subtree: true });
+  }
+  //////////////////////////////////////// 删除drawer中的特定条目 //////////////////////////////////////////////////////////
+
   // Get the current conversation ID
   function getCurrentConversationId() {
     const match = window.location.pathname.match(/\/c\/([\w-]+)/);
@@ -632,10 +666,17 @@
 
   // Load bookmarks from Chrome storage
   function loadBookmarks() {
+    // 同时要确保每个对话对应一个独立的drawer
     chrome.storage.local.get([STORAGE_KEY], (result) => {
       bookmarks = result[STORAGE_KEY] || {};
-      bookmarks[currentConversationId] = bookmarks[currentConversationId] || [];
-      populateBookmarkList(bookmarks[currentConversationId]);
+      // 确保当前对话 ID 存在
+      if (currentConversationId) {
+        bookmarks[currentConversationId] = bookmarks[currentConversationId] || [];
+        populateBookmarkList(bookmarks[currentConversationId]);
+      } else {
+        // 如果没有当前对话 ID，清空书签列表
+        populateBookmarkList([]);
+      }
     });
   }
 
@@ -734,9 +775,53 @@
       background-color: #fff; box-shadow: 0px 0px 10px rgba(0,0,0,0.5);
       overflow-y: auto; transition: right 0.3s; z-index: 9998; padding: 20px;
     `;
+
+    // 修改 bookmarkButton 的点击事件处理
+    bookmarkButton.addEventListener("click", () => {
+      starsVisible = !starsVisible;
+      toggleStarsVisibility(starsVisible);
+
+      // 切换按钮颜色
+      bookmarkButtonContainer.style.backgroundColor = starsVisible ? "#FFC107" : "#4CAF50";
+
+      // 切换 drawer 的显示状态
+      const drawer = document.getElementById("bookmark-drawer");
+      if (drawer) {
+        if (drawer.style.right === "0px") {
+          drawer.style.right = "-350px";
+          drawer.dataset.pinned = "false";
+        } else {
+          drawer.style.right = "0px";
+          // 固定 drawer
+          drawer.dataset.pinned = "true";
+        }
+      }
+    });
+
+    // 修改 drawer 的鼠标离开事件
     drawer.addEventListener("mouseleave", () => {
-      drawer.style.right = "-350px";
-    })
+      // 只有在未固定状态下才自动关闭
+      if (drawer.dataset.pinned !== "true") {
+        drawer.style.right = "-350px";
+      }
+    });
+
+    // 添加点击文档其他区域关闭 drawer 的事件
+    document.addEventListener("click", (e) => {
+      const drawer = document.getElementById("bookmark-drawer");
+      const bookmarkButtonContainer = document.getElementById("bookmark-button-container");
+
+      if (drawer && drawer.dataset.pinned === "true") {
+        // 如果点击的不是 drawer 或 bookmark 按钮，则关闭 drawer
+        if (!drawer.contains(e.target) && !bookmarkButtonContainer.contains(e.target)) {
+          drawer.style.right = "-350px";
+          drawer.dataset.pinned = "false";
+
+          // 如果星标可见，则保持图标为黄色，否则恢复为绿色
+          bookmarkButtonContainer.style.backgroundColor = starsVisible ? "#FFC107" : "#4CAF50";
+        }
+      }
+    });
 
     document.body.appendChild(drawer);
 
@@ -960,12 +1045,14 @@
     bookmarkData.forEach((bookmark) => addBookmarkToDrawer(bookmark));
   }
 
-  // Toggle visibility of star buttons on messages
+
+  // 在toggleStarsVisibility函数中修改添加星标按钮的部分
+  // 修改 toggleStarsVisibility 函数来使用图片
   function toggleStarsVisibility(visible) {
     const messages = document.querySelectorAll("[data-message-author-role]");
 
     messages.forEach((message) => {
-      // If message doesn't have an ID, assign one
+      // 如果message没有ID，为其分配一个
       if (!message.id) {
         const role = message.getAttribute("data-message-author-role");
         const type = role === "user" ? "question" : "answer";
@@ -974,43 +1061,145 @@
         message.id = `${type}-${counter}`;
       }
 
-      // Check if the message already has a star button
+      // 检查消息是否已有星标按钮
       if (!message.querySelector(".star-button")) {
         const starButton = document.createElement("button");
-        starButton.innerHTML = "⭐";
+
+        // 使用灰色和金色星星图片
+        starButton.innerHTML = `
+        <img src="${chrome.runtime.getURL('icons/grey-star.png')}" 
+             class="star-icon grey" 
+             alt="Add bookmark" 
+             style="width: 16px; height: 16px; display: inline-block;">
+        <img src="${chrome.runtime.getURL('icons/gold-star.png')}" 
+             class="star-icon gold" 
+             alt="Add bookmark" 
+             style="width: 16px; height: 16px; display: none;">
+      `;
+
         starButton.className = "star-button";
-        starButton.style.marginLeft = "10px";
-        starButton.style.cursor = "pointer";
-        starButton.style.display = visible ? "inline-block" : "none";
-        starButton.style.border = "none";
-        starButton.style.background = "transparent";
-        starButton.style.fontSize = "16px";
-        starButton.style.transition = "transform 0.2s";
+        starButton.style = `
+        margin-left: 10px;
+        cursor: pointer;
+        border: none;
+        background: transparent;
+        transition: transform 0.2s;
+        display: ${visible ? "inline-block" : "none"};
+      `;
         starButton.title = "Add bookmark";
         starButton.dataset.messageId = message.id;
 
-        // Add hover effect
+        // 悬停效果
         starButton.addEventListener("mouseenter", () => {
           starButton.style.transform = "scale(1.2)";
+          // 检查是否已被标记为书签
+          const isBookmarked = checkIfBookmarked(message.id);
+          if (!isBookmarked) {
+            // 显示金色星星
+            starButton.querySelector('.star-icon.grey').style.display = "none";
+            starButton.querySelector('.star-icon.gold').style.display = "inline-block";
+          }
         });
 
         starButton.addEventListener("mouseleave", () => {
-          starButton.style.transform = "scale(1)";
+          // 检查是否已被标记为书签
+          const isBookmarked = checkIfBookmarked(message.id);
+          if (!isBookmarked) {
+            starButton.style.transform = "scale(1)";
+            // 恢复显示灰色星星
+            starButton.querySelector('.star-icon.grey').style.display = "inline-block";
+            starButton.querySelector('.star-icon.gold').style.display = "none";
+          }
         });
 
-        // Add click handler
+        // 点击效果
         starButton.addEventListener("click", () => {
-          addBookmark(message);
+          const isBookmarked = checkIfBookmarked(message.id);
+
+          if (!isBookmarked) {
+            // 添加明显的动画效果
+            starButton.style.transform = "scale(1.5)";
+            setTimeout(() => {
+              starButton.style.transform = "scale(1.2)";
+            }, 200);
+
+            // 永久显示金色星星
+            starButton.querySelector('.star-icon.grey').style.display = "none";
+            starButton.querySelector('.star-icon.gold').style.display = "inline-block";
+
+            // 添加书签
+            addBookmark(message);
+          }
         });
 
-        // Find a good place to append the star
+        // 找到合适的位置添加星标
         const messageHeader = message.querySelector(".flex.items-center") || message;
         messageHeader.appendChild(starButton);
       } else {
-        // Update visibility of existing star button
-        message.querySelector(".star-button").style.display = visible ? "inline-block" : "none";
+        // 更新现有星标按钮的可见性
+        const starButton = message.querySelector(".star-button");
+        starButton.style.display = visible ? "inline-block" : "none";
+
+        // 如果已经是书签，确保显示金色星星
+        const isBookmarked = checkIfBookmarked(message.id);
+        if (isBookmarked) {
+          starButton.querySelector('.star-icon.grey').style.display = "none";
+          starButton.querySelector('.star-icon.gold').style.display = "inline-block";
+        }
       }
     });
+  }
+
+  // 添加辅助函数检查消息是否已被标记为书签
+  function checkIfBookmarked(messageId) {
+    if (!currentConversationId || !bookmarks[currentConversationId]) return false;
+    return bookmarks[currentConversationId].some(bookmark => bookmark.id === messageId);
+  }
+
+  // 修改addBookmark函数以处理已添加的书签
+  function addBookmark(message) {
+    if (!currentConversationId) {
+      currentConversationId = getCurrentConversationId();
+      if (!currentConversationId) {
+        console.error("Could not determine conversation ID");
+        return;
+      }
+
+      if (!bookmarks[currentConversationId]) {
+        bookmarks[currentConversationId] = [];
+      }
+    }
+
+    const messageId = message.id;
+
+    // 检查是否已经添加过这个书签
+    const exists = bookmarks[currentConversationId].some(b => b.id === messageId);
+    if (exists) {
+      // 已经是书签，可以选择显示提示或者不做任何操作
+      showNotification("Already bookmarked", "info");
+      return;
+    }
+
+    const role = message.getAttribute("data-message-author-role");
+    const type = role === "user" ? "Question" : "Answer";
+    const content = message.innerText.replace("⭐", "").trim();
+    const shortContent = content.length > 30 ? content.substring(0, 30) + "..." : content;
+
+    // 创建书签对象
+    const bookmark = {
+      id: messageId,
+      name: `${type}: ${shortContent}`,
+      content: content,
+      timestamp: new Date().toISOString()
+    };
+
+    // 添加到书签数组
+    bookmarks[currentConversationId].push(bookmark);
+    addBookmarkToDrawer(bookmark);
+    saveBookmarks();
+
+    // 显示成功添加书签的通知
+    showNotification("Bookmark added", "success");
   }
 
   // Add star buttons to any new messages that don't have them yet
@@ -1057,42 +1246,6 @@
         messageHeader.appendChild(starButton);
       }
     });
-  }
-
-  // Add a bookmark
-  function addBookmark(message) {
-    if (!currentConversationId) {
-      currentConversationId = getCurrentConversationId();
-      if (!currentConversationId) {
-        console.error("Could not determine conversation ID");
-        return;
-      }
-
-      if (!bookmarks[currentConversationId]) {
-        bookmarks[currentConversationId] = [];
-      }
-    }
-
-    const role = message.getAttribute("data-message-author-role");
-    const type = role === "user" ? "Question" : "Answer";
-    const content = message.innerText.replace("⭐", "").trim();
-    const shortContent = content.length > 30 ? content.substring(0, 30) + "..." : content;
-
-    // Create bookmark object
-    const bookmark = {
-      id: message.id,
-      name: `${type}: ${shortContent}`,
-      content: content,
-      timestamp: new Date().toISOString()
-    };
-
-    // Add to bookmarks array if not already there
-    const exists = bookmarks[currentConversationId].some(b => b.id === bookmark.id);
-    if (!exists) {
-      bookmarks[currentConversationId].push(bookmark);
-      addBookmarkToDrawer(bookmark);
-      saveBookmarks();
-    }
   }
 
   // Handle keyboard shortcuts
