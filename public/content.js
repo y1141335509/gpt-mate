@@ -135,40 +135,7 @@
         return;
       }
 
-      // 检查预格式化内容（代码块、Markdown 表格等）
-      const preElements = node.querySelectorAll('pre');
-      preElements.forEach(pre => {
-        if (pre.querySelector('.google-sheets-export-button')) return;
-
-        const codeElement = pre.querySelector('code');
-        const content = codeElement ? codeElement.textContent : pre.textContent;
-
-        if (isMarkdownTable(content)) {
-          console.log('Found Markdown table in pre element');
-          try {
-            const tableData = parseMarkdownTable(content);
-            if (tableData.headers.length > 0) {
-              console.log('Valid table found, adding button');
-              addGoogleSheetsButton(pre, tableData);
-            }
-          } catch (e) {
-            console.error('Error parsing markdown table:', e);
-          }
-        } else if (isCSVContent(content)) {
-          console.log('Found CSV content in pre element');
-          try {
-            const tableData = parseCSVContent(content);
-            if (tableData.headers.length > 0) {
-              console.log('Valid CSV found, adding button');
-              addGoogleSheetsButton(pre, tableData);
-            }
-          } catch (e) {
-            console.error('Error parsing CSV content:', e);
-          }
-        }
-      });
-
-      // 检查 HTML 表格
+      // 1. 直接检查 HTML 表格
       const tables = node.querySelectorAll('table');
       tables.forEach(table => {
         if (table.querySelector('.google-sheets-export-button')) return;
@@ -185,11 +152,62 @@
         }
       });
 
-      // 检查 CSV 链接
+      // 2. 检查预格式化内容中的表格
+      const preElements = node.querySelectorAll('pre');
+      preElements.forEach(pre => {
+        if (pre.querySelector('.google-sheets-export-button')) return;
+
+        const codeElement = pre.querySelector('code');
+        const content = codeElement ? codeElement.textContent : pre.textContent;
+
+        // 检查内容中是否包含 HTML 表格
+        if (content.includes('<table') && content.includes('</table>')) {
+          console.log('Found HTML table in pre element');
+          try {
+            // 创建临时 div 来解析 HTML 内容
+            const tempDiv = document.createElement('div');
+            tempDiv.innerHTML = content;
+            const htmlTables = tempDiv.querySelectorAll('table');
+
+            htmlTables.forEach(table => {
+              const tableData = parseHTMLTable(table);
+              if (tableData.headers.length > 0) {
+                console.log('Valid HTML table found in pre, adding button');
+                addGoogleSheetsButton(pre, tableData);
+              }
+            });
+          } catch (e) {
+            console.error('Error parsing HTML table in pre:', e);
+          }
+        } else if (isMarkdownTable(content)) {
+          // 原有的 Markdown 表格处理
+          try {
+            const tableData = parseMarkdownTable(content);
+            if (tableData.headers.length > 0) {
+              console.log('Valid Markdown table found, adding button');
+              addGoogleSheetsButton(pre, tableData);
+            }
+          } catch (e) {
+            console.error('Error parsing markdown table:', e);
+          }
+        } else if (isCSVContent(content)) {
+          // 原有的 CSV 处理
+          try {
+            const tableData = parseCSVContent(content);
+            if (tableData.headers.length > 0) {
+              console.log('Valid CSV found, adding button');
+              addGoogleSheetsButton(pre, tableData);
+            }
+          } catch (e) {
+            console.error('Error parsing CSV content:', e);
+          }
+        }
+      });
+
+      // 3. 检查 CSV 链接（保持不变）
       const links = node.querySelectorAll('a[href$=".csv"]');
       links.forEach(link => {
         if (link.nextElementSibling && link.nextElementSibling.classList.contains('google-sheets-export-button')) return;
-
         console.log('Found CSV link:', link.href);
         addGoogleSheetsButton(link, null, link.href);
       });
