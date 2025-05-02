@@ -81,31 +81,31 @@
 
     ////////////////////////////////////////// 检查表格和csv信息 ////////////////////////////////////////////////////////////
     // 添加表格检测的observer
-    // 添加表格检测的observer
     const tableObserver = new MutationObserver((mutations) => {
-      console.log('Mutations detected:', mutations.length); // 添加日志
-
       mutations.forEach((mutation) => {
         if (mutation.addedNodes.length) {
-          console.log('Added nodes:', mutation.addedNodes.length); // 添加日志
-
           mutation.addedNodes.forEach(node => {
             if (node.nodeType === 1) { // 元素节点
-              console.log('Checking element node:', node.tagName); // 添加日志
-
-              // 检查该节点
+              // 检查新添加的节点
               checkForTablesAndCSV([node]);
 
-              // 检查其子节点
-              const container = node.querySelector('.markdown-body, .message-content');
-              if (container) {
-                console.log('Found content container, checking children'); // 添加日志
+              // 检查消息容器
+              const containers = node.querySelectorAll('.markdown-body, .message-content, .text-base');
+              containers.forEach(container => {
                 checkForTablesAndCSV([container]);
-              }
+              });
             }
           });
         }
       });
+    });
+
+    // 更新观察配置
+    tableObserver.observe(document.body, {
+      childList: true,
+      subtree: true,
+      characterData: true,
+      attributes: true
     });
 
     // 查找聊天容器
@@ -126,114 +126,133 @@
   ////////////////////////////////////////// 检查表格和csv信息 ////////////////////////////////////////////////////////////
   // 添加新的函数来检查表格和csv输出：
   function checkForTablesAndCSV(nodes) {
-    console.log('Checking nodes:', nodes.length);
-
     nodes.forEach(node => {
-      // 检查是否已经添加过按钮
-      if (node.querySelector('.google-sheets-export-button')) {
-        console.log('Button already exists, skipping');
-        return;
-      }
+      if (!node || node.querySelector('.google-sheets-export-button')) return;
 
-      // 1. 直接检查 HTML 表格
+      // 1. HTML Tables
       const tables = node.querySelectorAll('table');
-      tables.forEach(table => {
-        if (table.querySelector('.google-sheets-export-button')) return;
+      tables.forEach(table => processTable(table, parseHTMLTable));
 
-        console.log('Found HTML table');
-        try {
-          const tableData = parseHTMLTable(table);
-          if (tableData.headers.length > 0) {
-            console.log('Valid HTML table found, adding button');
-            addGoogleSheetsButton(table, tableData);
-          }
-        } catch (e) {
-          console.error('Error parsing HTML table:', e);
-        }
-      });
-
-      // 2. 检查预格式化内容中的表格
+      // 2. Pre-formatted content
       const preElements = node.querySelectorAll('pre');
       preElements.forEach(pre => {
-        if (pre.querySelector('.google-sheets-export-button')) return;
-
         const codeElement = pre.querySelector('code');
         const content = codeElement ? codeElement.textContent : pre.textContent;
 
-        // 检查内容中是否包含 HTML 表格
+        // HTML Table in code block
         if (content.includes('<table') && content.includes('</table>')) {
-          console.log('Found HTML table in pre element');
-          try {
-            // 创建临时 div 来解析 HTML 内容
-            const tempDiv = document.createElement('div');
-            tempDiv.innerHTML = content;
-            const htmlTables = tempDiv.querySelectorAll('table');
-
-            htmlTables.forEach(table => {
-              const tableData = parseHTMLTable(table);
-              if (tableData.headers.length > 0) {
-                console.log('Valid HTML table found in pre, adding button');
-                addGoogleSheetsButton(pre, tableData);
-              }
-            });
-          } catch (e) {
-            console.error('Error parsing HTML table in pre:', e);
-          }
-        } else if (isMarkdownTable(content)) {
-          // 原有的 Markdown 表格处理
-          try {
-            const tableData = parseMarkdownTable(content);
-            if (tableData.headers.length > 0) {
-              console.log('Valid Markdown table found, adding button');
-              addGoogleSheetsButton(pre, tableData);
-            }
-          } catch (e) {
-            console.error('Error parsing markdown table:', e);
-          }
-        } else if (isCSVContent(content)) {
-          // 原有的 CSV 处理
-          try {
-            const tableData = parseCSVContent(content);
-            if (tableData.headers.length > 0) {
-              console.log('Valid CSV found, adding button');
-              addGoogleSheetsButton(pre, tableData);
-            }
-          } catch (e) {
-            console.error('Error parsing CSV content:', e);
-          }
+          const tempDiv = document.createElement('div');
+          tempDiv.innerHTML = content;
+          const htmlTables = tempDiv.querySelectorAll('table');
+          htmlTables.forEach(table => processTable(pre, parseHTMLTable, table));
+        }
+        // Markdown Table
+        else if (isMarkdownTable(content)) {
+          processTable(pre, parseMarkdownTable, content);
+        }
+        // CSV Content
+        else if (isCSVContent(content)) {
+          processTable(pre, parseCSVContent, content);
+        }
+        // TSV Content
+        else if (isTSVContent(content)) {
+          processTable(pre, parseTSVContent, content);
+        }
+        // JSON Content
+        else if (isJSONTable(content)) {
+          processTable(pre, parseJSONTable, content);
         }
       });
 
-      // 3. 检查 CSV 链接（保持不变）
-      const links = node.querySelectorAll('a[href$=".csv"]');
-      links.forEach(link => {
-        if (link.nextElementSibling && link.nextElementSibling.classList.contains('google-sheets-export-button')) return;
-        console.log('Found CSV link:', link.href);
-        addGoogleSheetsButton(link, null, link.href);
+      // 3. CSV/TSV Links
+      const dataLinks = node.querySelectorAll('a[href$=".csv"], a[href$=".tsv"]');
+      dataLinks.forEach(link => {
+        if (!link.nextElementSibling?.classList.contains('google-sheets-export-button')) {
+          addGoogleSheetsButton(link, null, link.href);
+        }
       });
     });
   }
 
-  // 添加 CSV 内容检测函数
-  function isCSVContent(content) {
-    // 检查是否有多行且包含逗号
+  // 添加 TSV 内容检测函数
+  function isTSVContent(content) {
     const lines = content.trim().split('\n');
     if (lines.length < 2) return false;
 
-    // 检查每行是否都包含逗号，且逗号数量一致
+    const tabCount = (lines[0].match(/\t/g) || []).length;
+    return tabCount > 0 && lines.slice(1).every(line =>
+      (line.match(/\t/g) || []).length === tabCount
+    );
+  }
+
+  // TSV Parser
+  function parseTSVContent(content) {
+    const lines = content.trim().split('\n');
+    const headers = lines[0].split('\t').map(h => h.trim());
+    const data = lines.slice(1).map(line =>
+      line.split('\t').map(cell => cell.trim())
+    );
+    return { headers, data };
+  }
+
+  // JSON Table Detection
+  function isJSONTable(content) {
+    try {
+      const data = JSON.parse(content);
+      return Array.isArray(data) &&
+        data.length > 0 &&
+        typeof data[0] === 'object' &&
+        !Array.isArray(data[0]);
+    } catch {
+      return false;
+    }
+  }
+
+  // JSON Parser
+  function parseJSONTable(content) {
+    try {
+      const data = JSON.parse(content);
+      if (!Array.isArray(data) || data.length === 0) return null;
+
+      const headers = Object.keys(data[0]);
+      const rows = data.map(item =>
+        headers.map(header => item[header]?.toString() || '')
+      );
+
+      return { headers, data: rows };
+    } catch {
+      return null;
+    }
+  }
+
+  // Helper function to process tables
+  function processTable(element, parser, content = null) {
+    try {
+      const tableData = content ? parser(content) : parser(element);
+      if (tableData && tableData.headers.length > 0) {
+        addGoogleSheetsButton(element, tableData);
+      }
+    } catch (e) {
+      console.error('Error processing table:', e);
+    }
+  }
+
+  // 添加 CSV 内容检测函数
+  function isCSVContent(content) {
+    const lines = content.trim().split('\n');
+    if (lines.length < 2) return false;
+  
+    // Check for consistent delimiter count
     const firstLineCommas = (lines[0].match(/,/g) || []).length;
     if (firstLineCommas === 0) return false;
-
-    // 检查至少前 3 行（或全部行，如果少于 3 行）
-    const linesToCheck = Math.min(3, lines.length);
-    for (let i = 0; i < linesToCheck; i++) {
-      const commas = (lines[i].match(/,/g) || []).length;
-      if (commas === 0 || (i > 0 && commas !== firstLineCommas)) {
-        return false;
-      }
-    }
-
-    return true;
+  
+    // Allow for quoted values containing commas
+    const pattern = /(?:^|,)("(?:[^"]*"")*[^"]*"|[^,]*)/g;
+    const firstLineFields = lines[0].match(pattern).length;
+  
+    return lines.slice(1).every(line => 
+      line.match(pattern).length === firstLineFields
+    );
   }
 
   // 添加 CSV 内容解析函数
@@ -280,19 +299,23 @@
   function isMarkdownTable(content) {
     const lines = content.trim().split('\n');
     if (lines.length < 2) return false;
-
-    // 检查是否包含表格分隔符行
-    const separatorLine = lines[1];
-    if (!separatorLine) return false;
-
-    const isTableSeparator = separatorLine.trim().replace(/[\|\-:\s]/g, '').length === 0
-      && separatorLine.includes('|')
-      && separatorLine.includes('-');
-
-    // 检查第一行是否包含列标题
-    const hasHeaders = lines[0].includes('|');
-
-    return isTableSeparator && hasHeaders;
+  
+    // Check header line
+    const headerLine = lines[0].trim();
+    if (!headerLine.includes('|')) return false;
+  
+    // Check separator line
+    const separatorLine = lines[1].trim();
+    const isSeparator = separatorLine.includes('|') && 
+                       separatorLine.replace(/[\|\-:\s]/g, '').length === 0;
+  
+    // Verify consistent column count
+    const columnCount = headerLine.split('|').filter(Boolean).length;
+    const hasConsistentColumns = lines.every(line => 
+      line.split('|').filter(Boolean).length === columnCount
+    );
+  
+    return isSeparator && hasConsistentColumns;
   }
 
   // 对Markdown表格进行解析
