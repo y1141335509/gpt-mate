@@ -1,9 +1,14 @@
-// 在 background.js 的顶部添加以下日志以便调试
+// Background script for ChatGPT Bookmark Extension
 console.log('Background script initialized');
 
+// Global auth token
+let authToken = null;
+
+// Handle messages from content script
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   console.log('Background received message:', request);
   
+  // Handle auth token request
   if (request.action === "getAuthToken") {
     console.log('Processing getAuthToken request');
 
@@ -31,12 +36,14 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       }
 
       console.log('Token obtained successfully');
+      authToken = token; // Store token for later use
       sendResponse({ token: token });
     });
     
-    return true; // 保持通道开放以便异步响应
+    return true; // Keep messaging channel open for async response
   }
 
+  // Handle token revocation
   if (request.action === "revokeToken") {
     if (authToken) {
       chrome.identity.removeCachedAuthToken({ token: authToken }, () => {
@@ -50,14 +57,63 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
             sendResponse({ error: error.message });
           });
       });
-      return true;
+      return true; // Keep messaging channel open
     }
     sendResponse({ success: false, error: 'No token to revoke' });
     return false;
   }
+  
+  // Handle CSV fetching to bypass CORS
+  if (request.action === "fetchCSV") {
+    console.log('Processing fetchCSV request for URL:', request.url);
+    
+    fetch(request.url)
+      .then(response => {
+        if (!response.ok) {
+          throw new Error(`HTTP error: ${response.status} ${response.statusText}`);
+        }
+        return response.text();
+      })
+      .then(data => {
+        console.log('CSV data fetched successfully, sending back to content script');
+        sendResponse({ data: data });
+      })
+      .catch(error => {
+        console.error('CSV fetch error:', error);
+        sendResponse({ error: error.message });
+      });
+    
+    return true; // Keep messaging channel open
+  }
 });
 
 // Handle installation/update
-chrome.runtime.onInstalled.addListener(() => {
-  console.log('Extension installed/updated');
+chrome.runtime.onInstalled.addListener((details) => {
+  console.log('Extension installed/updated:', details.reason);
+  
+  // Show first-time install instructions
+  if (details.reason === 'install') {
+    chrome.tabs.create({ url: 'welcome.html' });
+  }
+  
+  // Clear any stored auth tokens when updating
+  if (details.reason === 'update') {
+    chrome.identity.clearAllCachedAuthTokens(() => {
+      console.log('Cleared all cached auth tokens after update');
+    });
+  }
+});
+
+// Add listener for tab updates to refresh content script
+chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
+  if (changeInfo.status === 'complete' && 
+      (tab.url.includes('chat.openai.com') || tab.url.includes('chatgpt.com'))) {
+    console.log('ChatGPT page loaded, injecting content script');
+    
+    // Send message to content script to refresh
+    chrome.tabs.sendMessage(tabId, { action: "refreshContentScript" })
+      .catch(error => {
+        console.log('Content script not yet loaded or error occurred:', error);
+      });
+  }
 });

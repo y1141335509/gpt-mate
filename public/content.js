@@ -30,13 +30,49 @@
       existingButton.remove();
     }
 
+    // Check if chrome API is available
+    if (!chrome || !chrome.storage) {
+      console.error("Chrome API not available. Extension may need to be reloaded.");
+      
+      // Create a banner to notify the user
+      const banner = document.createElement("div");
+      banner.style = `
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        background-color: #f44336;
+        color: white;
+        padding: 10px;
+        text-align: center;
+        z-index: 10000;
+        font-size: 14px;
+      `;
+      banner.innerText = "Bookmark Extension: Please reload the page to use the extension";
+      document.body.appendChild(banner);
+      
+      return;
+    }
+
     // Initialize the bookmark system
     initBookmarkSystem();
 
     // Set up observers for dynamic content
     setupObservers();
+    
+    // Listen for refresh messages from background script
+    try {
+      chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+        if (request.action === "refreshContentScript") {
+          console.log("Received refresh request from background script");
+          initializeExtension();
+        }
+      });
+    } catch (error) {
+      console.error("Failed to set up message listener:", error);
+    }
   }
-
+  
   function setupObservers() {
     // Observer for UI changes
     const uiObserver = new MutationObserver(() => {
@@ -454,43 +490,30 @@
   // 改进 fetchCSVData 函数，增加错误处理和超时
   async function fetchCSVData(url) {
     try {
-      // 添加超时控制
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 30000); // 30秒超时
-
-      const response = await fetch(url, {
-        signal: controller.signal,
-        // 尝试处理跨域问题
-        mode: 'cors',
-        credentials: 'omit'
+      showNotification('Fetching CSV data...', 'info');
+      
+      // For CSV files that may have CORS restrictions, we'll use the background script
+      return new Promise((resolve, reject) => {
+        chrome.runtime.sendMessage({ 
+          action: "fetchCSV", 
+          url: url 
+        }, response => {
+          if (chrome.runtime.lastError) {
+            reject(new Error(chrome.runtime.lastError.message));
+            return;
+          }
+          
+          if (response.error) {
+            reject(new Error(response.error));
+          } else if (response.data) {
+            resolve(response.data);
+          } else {
+            reject(new Error('No data received from background script'));
+          }
+        });
       });
-
-      clearTimeout(timeoutId);
-
-      if (!response.ok) {
-        throw new Error(`HTTP error: ${response.status} ${response.statusText}`);
-      }
-
-      // 检查内容类型
-      const contentType = response.headers.get('content-type');
-      if (contentType && !contentType.includes('text/csv') && !contentType.includes('text/plain')) {
-        console.warn(`Warning: Unexpected content type: ${contentType}`);
-      }
-
-      return await response.text();
     } catch (error) {
-      console.error('Error fetching CSV:', error);
-
-      // 特别处理跨域错误
-      if (error.name === 'TypeError' && error.message.includes('Failed to fetch')) {
-        throw new Error('Cannot access this CSV file due to browser security restrictions. Try downloading the file first.');
-      }
-
-      // 处理超时错误
-      if (error.name === 'AbortError') {
-        throw new Error('Request timed out. The server took too long to respond.');
-      }
-
+      console.error('Error in fetchCSVData:', error);
       throw error;
     }
   }
@@ -569,34 +592,31 @@
     return result;
   }
 
-  // // 导出CSV到Google Sheets
-  // async function exportCSVToGoogleSheets(csvUrl) {
-  //   try {
-  //     const csvData = await fetchCSVData(csvUrl);
-  //     const tableData = parseCSVData(csvData);
-  //     await exportTableToGoogleSheets(tableData);
-  //   } catch (error) {
-  //     console.error('Error processing CSV:', error);
-  //     alert('Failed to process CSV file. Please try again.');
-  //   }
-  // }
-
   // Google API authentication and sheets creation
   async function getGoogleAccessToken() {
     try {
       return new Promise((resolve, reject) => {
-        // 确保 chrome.runtime 存在
+        // Check if Chrome runtime API is available
         if (!chrome || !chrome.runtime || !chrome.runtime.sendMessage) {
           console.error('Chrome runtime API not available');
+          showNotification('Extension error. Please reload the page.', 'error');
           reject(new Error('Chrome extension API not available. Please reload the page.'));
           return;
         }
 
+        // Set a timeout in case message response never comes back
+        const timeoutId = setTimeout(() => {
+          reject(new Error('Authentication request timed out. Please try again.'));
+        }, 30000); // 30 second timeout
+
         chrome.runtime.sendMessage({ action: "getAuthToken" }, response => {
-          // 检查是否有 chrome.runtime.lastError
+          clearTimeout(timeoutId);
+          
+          // Check for runtime errors
           const lastError = chrome.runtime.lastError;
           if (lastError) {
             console.error('Auth error:', lastError.message);
+            showNotification('Authentication failed. Please reload the page.', 'error');
             reject(new Error(lastError.message));
             return;
           }
@@ -606,15 +626,18 @@
             resolve(response.token);
           } else if (response && response.error) {
             console.error('Auth error:', response.error);
+            showNotification('Authentication failed: ' + response.error, 'error');
             reject(new Error(response.error));
           } else {
             console.error('No response or invalid response');
+            showNotification('Authentication failed. Please try again.', 'error');
             reject(new Error('Failed to get auth token'));
           }
         });
       });
     } catch (error) {
       console.error('Error in getGoogleAccessToken:', error);
+      showNotification('Authentication error: ' + error.message, 'error');
       throw error;
     }
   }
@@ -764,51 +787,6 @@
     }
   }
 
-  // async function fetchCSVData(url) {
-  //   try {
-  //     const response = await fetch(url);
-  //     if (!response.ok) {
-  //       throw new Error(`Failed to fetch CSV: ${response.statusText}`);
-  //     }
-  //     return await response.text();
-  //   } catch (error) {
-  //     console.error('Error fetching CSV:', error);
-  //     throw error;
-  //   }
-  // }
-
-  // function parseCSVData(csvText) {
-  //   if (!csvText || typeof csvText !== 'string') {
-  //     throw new Error('Invalid CSV data');
-  //   }
-
-  //   const lines = csvText.split(/\r\n|\n|\r/).filter(line => line.trim());
-
-  //   if (lines.length === 0) {
-  //     throw new Error('Empty CSV file');
-  //   }
-
-  //   // 检测分隔符 - 逗号或制表符
-  //   const firstLine = lines[0];
-  //   const delimiter = firstLine.includes('\t') ? '\t' : ',';
-
-  //   // 解析标题行
-  //   const headers = firstLine.split(delimiter).map(h => h.trim().replace(/^"|"$/g, ''));
-
-  //   // 解析数据行
-  //   const data = [];
-  //   for (let i = 1; i < lines.length; i++) {
-  //     // 简单的 CSV 解析，不处理引号内的逗号
-  //     const values = lines[i].split(delimiter).map(v => v.trim().replace(/^"|"$/g, ''));
-
-  //     // 确保有内容
-  //     if (values.some(v => v.trim())) {
-  //       data.push(values);
-  //     }
-  //   }
-
-  //   return { headers, data };
-  // }
 
   ////////////////////////////////////////// 检查表格和csv信息 ////////////////////////////////////////////////////////////
 
@@ -872,10 +850,27 @@
 
   // Save bookmarks to Chrome storage
   function saveBookmarks() {
-    chrome.storage.local.set({ [STORAGE_KEY]: bookmarks }, () => {
-      console.log("Bookmarks saved successfully");
-    });
+    try {
+      if (!chrome || !chrome.storage || !chrome.storage.local) {
+        console.error("Chrome storage API not available");
+        showNotification("Extension error: Please reload the page", "error");
+        return;
+      }
+      
+      chrome.storage.local.set({ [STORAGE_KEY]: bookmarks }, () => {
+        if (chrome.runtime.lastError) {
+          console.error("Error saving bookmarks:", chrome.runtime.lastError);
+          showNotification("Failed to save bookmark", "error");
+          return;
+        }
+        console.log("Bookmarks saved successfully");
+      });
+    } catch (error) {
+      console.error("Error in saveBookmarks:", error);
+      showNotification("Failed to save bookmark", "error");
+    }
   }
+
 
   // Create all UI elements
   function createBookmarkUI() {
@@ -1198,71 +1193,57 @@
     }, 3000);
   }
 
-  // 在 exportTableToGoogleSheets 函数中添加通知
-  // async function exportTableToGoogleSheets(tableData) {
-  //   try {
-  //     console.log('Attempting to export table:', tableData);
-  //     // 显示正在处理的通知
-  //     showNotification('Exporting to Google Sheets...');
-
-  //     const accessToken = await getGoogleAccessToken();
-  //     console.log('Got access token');
-
-  //     const response = await createGoogleSheet(accessToken, tableData);
-  //     console.log('Sheet created:', response);
-
-  //     if (response.spreadsheetUrl) {
-  //       // 成功通知
-  //       showNotification('Successfully exported to Google Sheets!');
-  //       window.open(response.spreadsheetUrl, '_blank');
-  //     }
-  //   } catch (error) {
-  //     console.error('Error exporting to Google Sheets:', error);
-  //     // 错误通知
-  //     showNotification(`Export failed: ${error.message}`, 'error');
-
-  //     if (error.message.includes('auth')) {
-  //       showNotification('Authentication failed. Please ensure you are signed into Chrome.', 'error');
-  //     }
-  //   }
-  // }
-
   async function exportTableToGoogleSheets(tableData) {
     try {
       console.log('Attempting to export table:', tableData);
-      // 显示正在处理的通知
+      // Show processing notification
       showNotification('Exporting to Google Sheets...', 'info');
-  
-      // 验证表格数据
+
+      // Validate table data
       if (!tableData || !tableData.headers || !Array.isArray(tableData.data)) {
         throw new Error('Invalid table data structure');
       }
-  
-      // 获取访问令牌
-      const accessToken = await getGoogleAccessToken();
+
+      // Get access token with retry
+      let accessToken = null;
+      let retryCount = 0;
+      const maxRetries = 2;
+      
+      while (!accessToken && retryCount <= maxRetries) {
+        try {
+          accessToken = await getGoogleAccessToken();
+        } catch (error) {
+          console.error(`Auth retry ${retryCount + 1}/${maxRetries} failed:`, error);
+          retryCount++;
+          if (retryCount > maxRetries) throw error;
+          // Wait before retrying
+          await new Promise(resolve => setTimeout(resolve, 1000));
+        }
+      }
+
       if (!accessToken) {
         throw new Error('Failed to authenticate with Google');
       }
       console.log('Got access token');
-  
-      // 创建 Google Sheet
+
+      // Create Google Sheet
       const response = await createGoogleSheet(accessToken, tableData);
       console.log('Sheet created:', response);
-  
+
       if (response && response.spreadsheetUrl) {
-        // 成功通知
+        // Success notification
         showNotification('Successfully exported to Google Sheets!', 'success');
         
-        // 在新标签页中打开表格
+        // Open in new tab
         window.open(response.spreadsheetUrl, '_blank');
       } else {
         throw new Error('No spreadsheet URL returned');
       }
     } catch (error) {
       console.error('Error exporting to Google Sheets:', error);
-      // 错误通知
+      // Error notification
       showNotification(`Export failed: ${error.message}`, 'error');
-  
+
       if (error.message.includes('auth')) {
         showNotification('Authentication failed. Please ensure you are signed into Chrome with your Google account.', 'error');
       }

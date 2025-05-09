@@ -2,35 +2,37 @@
   "manifest_version": 3,
   "name": "ChatGPT Bookmark Extension",
   "version": "1.0",
-  "description": "Add bookmarks to important parts of ChatGPT conversations.",
+  "description": "Add bookmarks to important parts of ChatGPT conversations and export tables to Google Sheets.",
   "permissions": [
     "storage",
     "identity",
-    "identity.email"
+    "identity.email",
+    "tabs",
+    "activeTab"
   ],
   "host_permissions": [
     "https://chat.openai.com/*",
     "https://chatgpt.com/*",
     "https://sheets.googleapis.com/*",
     "https://www.googleapis.com/*",
-    "https://accounts.google.com/*"
+    "https://accounts.google.com/*",
+    "https://*/*"
   ],
   "oauth2": {
-  "client_id": "797486799565-8lguc50rquf0q36pjpf653u63felvnqf.apps.googleusercontent.com",
-  "scopes": [
-    "https://www.googleapis.com/auth/spreadsheets",
-    "https://www.googleapis.com/auth/drive.file",
-    "https://www.googleapis.com/auth/userinfo.email",
-    "https://www.googleapis.com/auth/userinfo.profile"
+    "client_id": "797486799565-8lguc50rquf0q36pjpf653u63felvnqf.apps.googleusercontent.com",
+    "scopes": [
+      "https://www.googleapis.com/auth/spreadsheets",
+      "https://www.googleapis.com/auth/drive.file",
+      "https://www.googleapis.com/auth/userinfo.email",
+      "https://www.googleapis.com/auth/userinfo.profile"
     ]
   },
-  "key": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAGVubWRsZ25nYWVsb2JlamRiZGxqYmtqaHBmYmdwam1s",
   "background": {
     "service_worker": "background.js",
     "type": "module"
   },
   "content_security_policy": {
-    "extension_pages": "script-src 'self'; object-src 'self'; connect-src 'self' https://*.googleapis.com https://accounts.google.com"
+    "extension_pages": "script-src 'self'; object-src 'self'; connect-src 'self' https://*.googleapis.com https://accounts.google.com https://*.com"
   },
   "content_scripts": [
     {
@@ -38,13 +40,27 @@
         "https://chat.openai.com/*",
         "https://chatgpt.com/*"
       ],
-      "js": ["content.js"]
+      "js": ["content.js"],
+      "css": ["content.css"]
     }
   ],
   "web_accessible_resources": [
     {
-      "resources": ["icons/*"],
+      "resources": ["icons/*", "welcome.html"],
       "matches": ["https://chat.openai.com/*", "https://chatgpt.com/*"]
     }
-  ]
+  ],
+  "icons": {
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  },
+  "action": {
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
+    },
+    "default_title": "ChatGPT Bookmark Extension"
+  }
 }
