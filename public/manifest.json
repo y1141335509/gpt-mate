@@ -6,9 +6,7 @@
   "permissions": [
     "storage",
     "identity",
-    "identity.email",
-    "tabs",
-    "activeTab"
+    "identity.email"
   ],
   "host_permissions": [
     "https://chat.openai.com/*",

@@ -241,16 +241,16 @@
   function isCSVContent(content) {
     const lines = content.trim().split('\n');
     if (lines.length < 2) return false;
-  
+
     // Check for consistent delimiter count
     const firstLineCommas = (lines[0].match(/,/g) || []).length;
     if (firstLineCommas === 0) return false;
-  
+
     // Allow for quoted values containing commas
     const pattern = /(?:^|,)("(?:[^"]*"")*[^"]*"|[^,]*)/g;
     const firstLineFields = lines[0].match(pattern).length;
-  
-    return lines.slice(1).every(line => 
+
+    return lines.slice(1).every(line =>
       line.match(pattern).length === firstLineFields
     );
   }
@@ -299,22 +299,22 @@
   function isMarkdownTable(content) {
     const lines = content.trim().split('\n');
     if (lines.length < 2) return false;
-  
+
     // Check header line
     const headerLine = lines[0].trim();
     if (!headerLine.includes('|')) return false;
-  
+
     // Check separator line
     const separatorLine = lines[1].trim();
-    const isSeparator = separatorLine.includes('|') && 
-                       separatorLine.replace(/[\|\-:\s]/g, '').length === 0;
-  
+    const isSeparator = separatorLine.includes('|') &&
+      separatorLine.replace(/[\|\-:\s]/g, '').length === 0;
+
     // Verify consistent column count
     const columnCount = headerLine.split('|').filter(Boolean).length;
-    const hasConsistentColumns = lines.every(line => 
+    const hasConsistentColumns = lines.every(line =>
       line.split('|').filter(Boolean).length === columnCount
     );
-  
+
     return isSeparator && hasConsistentColumns;
   }
 
@@ -420,17 +420,166 @@
     }
   }
 
-  // 导出CSV到Google Sheets
+  // 修改 exportCSVToGoogleSheets 函数
   async function exportCSVToGoogleSheets(csvUrl) {
     try {
+      // 显示处理中通知
+      showNotification('Processing CSV data...', 'info');
+
+      // 检查链接有效性
+      if (!csvUrl || !csvUrl.trim() || !csvUrl.toLowerCase().endsWith('.csv')) {
+        throw new Error('Invalid CSV URL');
+      }
+
+      // 尝试获取 CSV 数据
       const csvData = await fetchCSVData(csvUrl);
+      if (!csvData || typeof csvData !== 'string' || csvData.trim() === '') {
+        throw new Error('Failed to fetch CSV data or received empty content');
+      }
+
+      // 解析 CSV 数据
       const tableData = parseCSVData(csvData);
+      if (!tableData || !tableData.headers || tableData.headers.length === 0) {
+        throw new Error('Failed to parse CSV data: Invalid format');
+      }
+
+      // 导出到 Google Sheets
       await exportTableToGoogleSheets(tableData);
     } catch (error) {
       console.error('Error processing CSV:', error);
-      alert('Failed to process CSV file. Please try again.');
+      showNotification(`Failed to process CSV: ${error.message}`, 'error');
     }
   }
+
+  // 改进 fetchCSVData 函数，增加错误处理和超时
+  async function fetchCSVData(url) {
+    try {
+      // 添加超时控制
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 30000); // 30秒超时
+
+      const response = await fetch(url, {
+        signal: controller.signal,
+        // 尝试处理跨域问题
+        mode: 'cors',
+        credentials: 'omit'
+      });
+
+      clearTimeout(timeoutId);
+
+      if (!response.ok) {
+        throw new Error(`HTTP error: ${response.status} ${response.statusText}`);
+      }
+
+      // 检查内容类型
+      const contentType = response.headers.get('content-type');
+      if (contentType && !contentType.includes('text/csv') && !contentType.includes('text/plain')) {
+        console.warn(`Warning: Unexpected content type: ${contentType}`);
+      }
+
+      return await response.text();
+    } catch (error) {
+      console.error('Error fetching CSV:', error);
+
+      // 特别处理跨域错误
+      if (error.name === 'TypeError' && error.message.includes('Failed to fetch')) {
+        throw new Error('Cannot access this CSV file due to browser security restrictions. Try downloading the file first.');
+      }
+
+      // 处理超时错误
+      if (error.name === 'AbortError') {
+        throw new Error('Request timed out. The server took too long to respond.');
+      }
+
+      throw error;
+    }
+  }
+
+  // 改进 parseCSVData 函数，增强健壮性
+  function parseCSVData(csvText) {
+    if (!csvText || typeof csvText !== 'string') {
+      throw new Error('Invalid CSV data');
+    }
+
+    // 移除 BOM 字符（如果存在）
+    const text = csvText.charCodeAt(0) === 0xFEFF ? csvText.slice(1) : csvText;
+
+    // 尝试检测行分隔符
+    const lineBreak = text.includes('\r\n') ? '\r\n' : (text.includes('\n') ? '\n' : '\r');
+    const lines = text.split(lineBreak).filter(line => line.trim());
+
+    if (lines.length === 0) {
+      throw new Error('Empty CSV file');
+    }
+
+    // 检测分隔符 - 逗号、分号或制表符
+    const firstLine = lines[0];
+    let delimiter = ',';
+    if (firstLine.includes('\t')) delimiter = '\t';
+    else if (firstLine.includes(';')) delimiter = ';';
+
+    // 解析标题行，处理引号
+    const headers = parseCSVLine(firstLine, delimiter);
+
+    // 解析数据行
+    const data = [];
+    for (let i = 1; i < lines.length; i++) {
+      if (lines[i].trim()) {
+        const values = parseCSVLine(lines[i], delimiter);
+        data.push(values);
+      }
+    }
+
+    return { headers, data };
+  }
+
+  // 新增函数：解析 CSV 行，正确处理引号内的分隔符
+  function parseCSVLine(line, delimiter) {
+    const result = [];
+    let currentValue = '';
+    let inQuotes = false;
+
+    for (let i = 0; i < line.length; i++) {
+      const char = line[i];
+
+      // 处理引号
+      if (char === '"') {
+        // 检查是否为转义的引号 (")
+        if (i + 1 < line.length && line[i + 1] === '"') {
+          currentValue += '"';
+          i++; // 跳过下一个引号
+        } else {
+          inQuotes = !inQuotes;
+        }
+      }
+      // 处理分隔符
+      else if (char === delimiter && !inQuotes) {
+        result.push(currentValue.trim());
+        currentValue = '';
+      }
+      // 普通字符
+      else {
+        currentValue += char;
+      }
+    }
+
+    // 添加最后一个值
+    result.push(currentValue.trim());
+
+    return result;
+  }
+
+  // // 导出CSV到Google Sheets
+  // async function exportCSVToGoogleSheets(csvUrl) {
+  //   try {
+  //     const csvData = await fetchCSVData(csvUrl);
+  //     const tableData = parseCSVData(csvData);
+  //     await exportTableToGoogleSheets(tableData);
+  //   } catch (error) {
+  //     console.error('Error processing CSV:', error);
+  //     alert('Failed to process CSV file. Please try again.');
+  //   }
+  // }
 
   // Google API authentication and sheets creation
   async function getGoogleAccessToken() {
@@ -615,51 +764,51 @@
     }
   }
 
-  async function fetchCSVData(url) {
-    try {
-      const response = await fetch(url);
-      if (!response.ok) {
-        throw new Error(`Failed to fetch CSV: ${response.statusText}`);
-      }
-      return await response.text();
-    } catch (error) {
-      console.error('Error fetching CSV:', error);
-      throw error;
-    }
-  }
+  // async function fetchCSVData(url) {
+  //   try {
+  //     const response = await fetch(url);
+  //     if (!response.ok) {
+  //       throw new Error(`Failed to fetch CSV: ${response.statusText}`);
+  //     }
+  //     return await response.text();
+  //   } catch (error) {
+  //     console.error('Error fetching CSV:', error);
+  //     throw error;
+  //   }
+  // }
 
-  function parseCSVData(csvText) {
-    if (!csvText || typeof csvText !== 'string') {
-      throw new Error('Invalid CSV data');
-    }
+  // function parseCSVData(csvText) {
+  //   if (!csvText || typeof csvText !== 'string') {
+  //     throw new Error('Invalid CSV data');
+  //   }
 
-    const lines = csvText.split(/\r\n|\n|\r/).filter(line => line.trim());
+  //   const lines = csvText.split(/\r\n|\n|\r/).filter(line => line.trim());
 
-    if (lines.length === 0) {
-      throw new Error('Empty CSV file');
-    }
+  //   if (lines.length === 0) {
+  //     throw new Error('Empty CSV file');
+  //   }
 
-    // 检测分隔符 - 逗号或制表符
-    const firstLine = lines[0];
-    const delimiter = firstLine.includes('\t') ? '\t' : ',';
+  //   // 检测分隔符 - 逗号或制表符
+  //   const firstLine = lines[0];
+  //   const delimiter = firstLine.includes('\t') ? '\t' : ',';
 
-    // 解析标题行
-    const headers = firstLine.split(delimiter).map(h => h.trim().replace(/^"|"$/g, ''));
+  //   // 解析标题行
+  //   const headers = firstLine.split(delimiter).map(h => h.trim().replace(/^"|"$/g, ''));
 
-    // 解析数据行
-    const data = [];
-    for (let i = 1; i < lines.length; i++) {
-      // 简单的 CSV 解析，不处理引号内的逗号
-      const values = lines[i].split(delimiter).map(v => v.trim().replace(/^"|"$/g, ''));
+  //   // 解析数据行
+  //   const data = [];
+  //   for (let i = 1; i < lines.length; i++) {
+  //     // 简单的 CSV 解析，不处理引号内的逗号
+  //     const values = lines[i].split(delimiter).map(v => v.trim().replace(/^"|"$/g, ''));
 
-      // 确保有内容
-      if (values.some(v => v.trim())) {
-        data.push(values);
-      }
-    }
+  //     // 确保有内容
+  //     if (values.some(v => v.trim())) {
+  //       data.push(values);
+  //     }
+  //   }
 
-    return { headers, data };
-  }
+  //   return { headers, data };
+  // }
 
   ////////////////////////////////////////// 检查表格和csv信息 ////////////////////////////////////////////////////////////
 
@@ -1050,34 +1199,76 @@
   }
 
   // 在 exportTableToGoogleSheets 函数中添加通知
+  // async function exportTableToGoogleSheets(tableData) {
+  //   try {
+  //     console.log('Attempting to export table:', tableData);
+  //     // 显示正在处理的通知
+  //     showNotification('Exporting to Google Sheets...');
+
+  //     const accessToken = await getGoogleAccessToken();
+  //     console.log('Got access token');
+
+  //     const response = await createGoogleSheet(accessToken, tableData);
+  //     console.log('Sheet created:', response);
+
+  //     if (response.spreadsheetUrl) {
+  //       // 成功通知
+  //       showNotification('Successfully exported to Google Sheets!');
+  //       window.open(response.spreadsheetUrl, '_blank');
+  //     }
+  //   } catch (error) {
+  //     console.error('Error exporting to Google Sheets:', error);
+  //     // 错误通知
+  //     showNotification(`Export failed: ${error.message}`, 'error');
+
+  //     if (error.message.includes('auth')) {
+  //       showNotification('Authentication failed. Please ensure you are signed into Chrome.', 'error');
+  //     }
+  //   }
+  // }
+
   async function exportTableToGoogleSheets(tableData) {
     try {
       console.log('Attempting to export table:', tableData);
       // 显示正在处理的通知
-      showNotification('Exporting to Google Sheets...');
-
+      showNotification('Exporting to Google Sheets...', 'info');
+  
+      // 验证表格数据
+      if (!tableData || !tableData.headers || !Array.isArray(tableData.data)) {
+        throw new Error('Invalid table data structure');
+      }
+  
+      // 获取访问令牌
       const accessToken = await getGoogleAccessToken();
+      if (!accessToken) {
+        throw new Error('Failed to authenticate with Google');
+      }
       console.log('Got access token');
-
+  
+      // 创建 Google Sheet
       const response = await createGoogleSheet(accessToken, tableData);
       console.log('Sheet created:', response);
-
-      if (response.spreadsheetUrl) {
+  
+      if (response && response.spreadsheetUrl) {
         // 成功通知
-        showNotification('Successfully exported to Google Sheets!');
+        showNotification('Successfully exported to Google Sheets!', 'success');
+        
+        // 在新标签页中打开表格
         window.open(response.spreadsheetUrl, '_blank');
+      } else {
+        throw new Error('No spreadsheet URL returned');
       }
     } catch (error) {
       console.error('Error exporting to Google Sheets:', error);
       // 错误通知
       showNotification(`Export failed: ${error.message}`, 'error');
-
+  
       if (error.message.includes('auth')) {
-        showNotification('Authentication failed. Please ensure you are signed into Chrome.', 'error');
+        showNotification('Authentication failed. Please ensure you are signed into Chrome with your Google account.', 'error');
       }
     }
   }
-
+  
   // Populate bookmark list from loaded data
   function populateBookmarkList(bookmarkData) {
     const bookmarkList = document.getElementById("bookmark-list");

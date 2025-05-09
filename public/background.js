@@ -26,7 +26,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 
       if (!token) {
         console.error('No token received');
-        sendResponse({ error: 'No token received' });
+        sendResponse({ error: 'Authentication failed. Please make sure you are signed into Chrome with your Google account.' });
         return;
       }
 
