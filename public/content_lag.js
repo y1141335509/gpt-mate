@@ -8,6 +8,7 @@
   // Data structure for bookmarks
   let bookmarks = {};
   let currentConversationId = null;
+  let starsVisible = true;
 
   // Initialize when DOM is ready
   if (document.readyState === 'loading') {
@@ -98,8 +99,7 @@
     if (currentConversationId) loadBookmarks();
 
     setupUrlChangeListener();
-    // 星标始终显示
-    addStarButtonsToMessages();
+    toggleStarsVisibility(starsVisible);
 
     // Observe DOM changes for new messages
     const observer = new MutationObserver(() => {
@@ -108,11 +108,12 @@
         getCurrentConversationId();
         if (currentConversationId) loadBookmarks();
       }
-      // 始终添加星标到新消息
-      addStarButtonsToNewMessages();
+      if (starsVisible) addStarButtonsToNewMessages();
     });
     observer.observe(document.body, { childList: true, subtree: true });
 
+
+    ////////////////////////////////////////// 检查表格和csv信息 ////////////////////////////////////////////////////////////
     // 添加表格检测的observer
     const tableObserver = new MutationObserver((mutations) => {
       mutations.forEach((mutation) => {
@@ -144,18 +145,20 @@
     // 查找聊天容器
     const chatContainer = document.querySelector('main, .conversation-container');
     if (chatContainer) {
-      console.log('Found chat container, starting observation');
+      console.log('Found chat container, starting observation'); // 添加日志
       tableObserver.observe(chatContainer, {
         childList: true,
         subtree: true,
         characterData: true
       });
     } else {
-      console.log('Chat container not found');
+      console.log('Chat container not found'); // 添加日志
     }
+    ////////////////////////////////////////// 检查表格和csv信息 ////////////////////////////////////////////////////////////
   }
 
-  // 添加新的函数来检查表格和csv输出
+  ////////////////////////////////////////// 检查表格和csv信息 ////////////////////////////////////////////////////////////
+  // 添加新的函数来检查表格和csv输出：
   function checkForTablesAndCSV(nodes) {
     nodes.forEach(node => {
       if (!node || node.querySelector('.google-sheets-export-button')) return;
@@ -194,6 +197,14 @@
           processTable(pre, parseJSONTable, content);
         }
       });
+
+      // // 3. CSV/TSV Links
+      // const dataLinks = node.querySelectorAll('a[href$=".csv"], a[href$=".tsv"]');
+      // dataLinks.forEach(link => {
+      //   if (!link.nextElementSibling?.classList.contains('google-sheets-export-button')) {
+      //     addGoogleSheetsButton(link, null, link.href);
+      //   }
+      // });
     });
   }
 
@@ -386,7 +397,11 @@
   function addGoogleSheetsButton(element, tableData) {
     const button = document.createElement('button');
     button.className = 'google-sheets-export-button';
-    button.innerHTML = `📊`;
+    button.innerHTML = `
+      <img src="https://www.google.com/images/about/sheets-icon.svg" 
+           alt="Export to Google Sheets" 
+           style="width: 20px; height: 20px;">
+    `;
     button.style = `
       background: none;
       border: none;
@@ -397,7 +412,6 @@
       transition: transform 0.2s;
       display: inline-flex;
       align-items: center;
-      font-size: 20px;
     `;
 
     button.title = "Export to Google Sheets";
@@ -415,14 +429,14 @@
       e.stopPropagation();
       try {
         if (tableData) {
-          await exportTableToGoogleSheets(tableData);
+          await exportCSVToGoogleSheets(tableData);
         }
       } catch (error) {
         console.error('Export failed:', error);
         alert('Failed to export to Google Sheets. Please try again.');
       }
     });
-
+    
     // 如果是链接，在链接后面添加按钮
     if (element.tagName === 'A') {
       element.parentNode.insertBefore(button, element.nextSibling);
@@ -437,6 +451,142 @@
       element.parentNode.insertBefore(container, element.nextSibling);
     }
   }
+
+  // // 修改 exportCSVToGoogleSheets 函数
+  // async function exportCSVToGoogleSheets(csvUrl) {
+  //   try {
+  //     // 显示处理中通知
+  //     showNotification('Processing CSV data...', 'info');
+
+  //     // 检查链接有效性
+  //     if (!csvUrl || !csvUrl.trim() || !csvUrl.toLowerCase().endsWith('.csv')) {
+  //       throw new Error('Invalid CSV URL');
+  //     }
+
+  //     // 尝试获取 CSV 数据
+  //     const csvData = await fetchCSVData(csvUrl);
+  //     if (!csvData || typeof csvData !== 'string' || csvData.trim() === '') {
+  //       throw new Error('Failed to fetch CSV data or received empty content');
+  //     }
+
+  //     // 解析 CSV 数据
+  //     const tableData = parseCSVData(csvData);
+  //     if (!tableData || !tableData.headers || tableData.headers.length === 0) {
+  //       throw new Error('Failed to parse CSV data: Invalid format');
+  //     }
+
+  //     // 导出到 Google Sheets
+  //     await exportTableToGoogleSheets(tableData);
+  //   } catch (error) {
+  //     console.error('Error processing CSV:', error);
+  //     showNotification(`Failed to process CSV: ${error.message}`, 'error');
+  //   }
+  // }
+
+  // // 改进 fetchCSVData 函数，增加错误处理和超时
+  // async function fetchCSVData(url) {
+  //   try {
+  //     showNotification('Fetching CSV data...', 'info');
+      
+  //     // For CSV files that may have CORS restrictions, we'll use the background script
+  //     return new Promise((resolve, reject) => {
+  //       chrome.runtime.sendMessage({ 
+  //         action: "fetchCSV", 
+  //         url: url 
+  //       }, response => {
+  //         if (chrome.runtime.lastError) {
+  //           reject(new Error(chrome.runtime.lastError.message));
+  //           return;
+  //         }
+          
+  //         if (response.error) {
+  //           reject(new Error(response.error));
+  //         } else if (response.data) {
+  //           resolve(response.data);
+  //         } else {
+  //           reject(new Error('No data received from background script'));
+  //         }
+  //       });
+  //     });
+  //   } catch (error) {
+  //     console.error('Error in fetchCSVData:', error);
+  //     throw error;
+  //   }
+  // }
+
+  // // 改进 parseCSVData 函数，增强健壮性
+  // function parseCSVData(csvText) {
+  //   if (!csvText || typeof csvText !== 'string') {
+  //     throw new Error('Invalid CSV data');
+  //   }
+
+  //   // 移除 BOM 字符（如果存在）
+  //   const text = csvText.charCodeAt(0) === 0xFEFF ? csvText.slice(1) : csvText;
+
+  //   // 尝试检测行分隔符
+  //   const lineBreak = text.includes('\r\n') ? '\r\n' : (text.includes('\n') ? '\n' : '\r');
+  //   const lines = text.split(lineBreak).filter(line => line.trim());
+
+  //   if (lines.length === 0) {
+  //     throw new Error('Empty CSV file');
+  //   }
+
+  //   // 检测分隔符 - 逗号、分号或制表符
+  //   const firstLine = lines[0];
+  //   let delimiter = ',';
+  //   if (firstLine.includes('\t')) delimiter = '\t';
+  //   else if (firstLine.includes(';')) delimiter = ';';
+
+  //   // 解析标题行，处理引号
+  //   const headers = parseCSVLine(firstLine, delimiter);
+
+  //   // 解析数据行
+  //   const data = [];
+  //   for (let i = 1; i < lines.length; i++) {
+  //     if (lines[i].trim()) {
+  //       const values = parseCSVLine(lines[i], delimiter);
+  //       data.push(values);
+  //     }
+  //   }
+
+  //   return { headers, data };
+  // }
+
+  // // 新增函数：解析 CSV 行，正确处理引号内的分隔符
+  // function parseCSVLine(line, delimiter) {
+  //   const result = [];
+  //   let currentValue = '';
+  //   let inQuotes = false;
+
+  //   for (let i = 0; i < line.length; i++) {
+  //     const char = line[i];
+
+  //     // 处理引号
+  //     if (char === '"') {
+  //       // 检查是否为转义的引号 (")
+  //       if (i + 1 < line.length && line[i + 1] === '"') {
+  //         currentValue += '"';
+  //         i++; // 跳过下一个引号
+  //       } else {
+  //         inQuotes = !inQuotes;
+  //       }
+  //     }
+  //     // 处理分隔符
+  //     else if (char === delimiter && !inQuotes) {
+  //       result.push(currentValue.trim());
+  //       currentValue = '';
+  //     }
+  //     // 普通字符
+  //     else {
+  //       currentValue += char;
+  //     }
+  //   }
+
+  //   // 添加最后一个值
+  //   result.push(currentValue.trim());
+
+  //   return result;
+  // }
 
   // Google API authentication and sheets creation
   async function getGoogleAccessToken() {
@@ -633,7 +783,11 @@
     }
   }
 
-  // 添加一个简单的确认对话框来实现
+
+  ////////////////////////////////////////// 检查表格和csv信息 ////////////////////////////////////////////////////////////
+
+  //////////////////////////////////////// 删除drawer中的特定条目 //////////////////////////////////////////////////////////
+  // 添加一个简单的确认对话框来实现：
   function showCustomConfirmation(message) {
     return new Promise((resolve) => {
       const confirmed = window.confirm(message);
@@ -641,7 +795,7 @@
     });
   }
 
-  // 确保 URL 发生变化时重新加载书签
+  // 确保 URL 发生变化时重新加载书签：
   function setupUrlChangeListener() {
     let lastUrl = window.location.href;
 
@@ -649,7 +803,7 @@
     const observer = new MutationObserver(() => {
       if (window.location.href !== lastUrl) {
         lastUrl = window.location.href;
-        // URL 已更改，获取新的对话 ID
+        // URL 已更改，获取新的对话 ID 病假在相应的数千
         currentConversationId = getCurrentConversationId();
         if (currentConversationId) {
           loadBookmarks();
@@ -661,6 +815,7 @@
     });
     observer.observe(document.body, { childList: true, subtree: true });
   }
+  //////////////////////////////////////// 删除drawer中的特定条目 //////////////////////////////////////////////////////////
 
   // Get the current conversation ID
   function getCurrentConversationId() {
@@ -712,6 +867,7 @@
     }
   }
 
+
   // Create all UI elements
   function createBookmarkUI() {
     const bookmarkButtonContainer = document.createElement("div");
@@ -721,15 +877,27 @@
       width: 50px; height: 50px; border-radius: 50%;
       background-color: #4CAF50; display: flex; justify-content: center;
       align-items: center; cursor: pointer; box-shadow: 0 2px 10px rgba(0,0,0,0.2);
-      transition: transform 0.2s;
+      transition: transform 0.2s, background-color 0.2s;
     `;
-    
     bookmarkButtonContainer.addEventListener("mouseenter", () => {
       bookmarkButtonContainer.style.transform = "scale(1.1)";
+      const drawer = document.getElementById("bookmark-drawer");
+      if (drawer) {
+        drawer.style.right = "0px";
+      }
     });
 
-    bookmarkButtonContainer.addEventListener("mouseleave", () => {
+    bookmarkButtonContainer.addEventListener("mouseleave", (e) => {
       bookmarkButtonContainer.style.transform = "scale(1)";
+      const drawer = document.getElementById("bookmark-drawer");
+      if (drawer) {
+        // 检查鼠标是否移动到了 drawer 上
+        const rect = drawer.getBoundingClientRect();
+        if (!(e.clientX >= rect.left && e.clientX <= rect.right &&
+          e.clientY >= rect.top && e.clientY <= rect.bottom)) {
+          drawer.style.right = "-350px";
+        }
+      }
     });
 
     const bookmarkButton = document.createElement("button");
@@ -738,26 +906,16 @@
       border: none; background: transparent; font-size: 24px;
       color: white; cursor: pointer;
     `;
-    bookmarkButton.title = "Toggle bookmark drawer";
-    
-    // 点击按钮切换drawer
+    bookmarkButton.title = "Toggle bookmark stars";
     bookmarkButton.addEventListener("click", () => {
-      const drawer = document.getElementById("bookmark-drawer");
-      if (drawer) {
-        if (drawer.style.right === "0px") {
-          drawer.style.right = "-350px";
-          drawer.dataset.pinned = "false";
-        } else {
-          drawer.style.right = "0px";
-          drawer.dataset.pinned = "true";
-        }
-      }
+      starsVisible = !starsVisible;
+      toggleStarsVisibility(starsVisible);
+      bookmarkButtonContainer.style.backgroundColor = starsVisible ? "#FFC107" : "#4CAF50";
     });
-    
     bookmarkButtonContainer.appendChild(bookmarkButton);
     document.body.appendChild(bookmarkButtonContainer);
 
-    // 创建drawer里面的搜索栏
+    // 创建drawer里面的搜索栏：
     function createSearchBox() {
       const searchContainer = document.createElement('div');
       searchContainer.style = `
@@ -799,6 +957,36 @@
       overflow-y: auto; transition: right 0.3s; z-index: 9998; padding: 20px;
     `;
 
+    // 修改 bookmarkButton 的点击事件处理
+    bookmarkButton.addEventListener("click", () => {
+      starsVisible = !starsVisible;
+      toggleStarsVisibility(starsVisible);
+
+      // 切换按钮颜色
+      bookmarkButtonContainer.style.backgroundColor = starsVisible ? "#FFC107" : "#4CAF50";
+
+      // 切换 drawer 的显示状态
+      const drawer = document.getElementById("bookmark-drawer");
+      if (drawer) {
+        if (drawer.style.right === "0px") {
+          drawer.style.right = "-350px";
+          drawer.dataset.pinned = "false";
+        } else {
+          drawer.style.right = "0px";
+          // 固定 drawer
+          drawer.dataset.pinned = "true";
+        }
+      }
+    });
+
+    // 修改 drawer 的鼠标离开事件
+    drawer.addEventListener("mouseleave", () => {
+      // 只有在未固定状态下才自动关闭
+      if (drawer.dataset.pinned !== "true") {
+        drawer.style.right = "-350px";
+      }
+    });
+
     // 添加点击文档其他区域关闭 drawer 的事件
     document.addEventListener("click", (e) => {
       const drawer = document.getElementById("bookmark-drawer");
@@ -809,11 +997,15 @@
         if (!drawer.contains(e.target) && !bookmarkButtonContainer.contains(e.target)) {
           drawer.style.right = "-350px";
           drawer.dataset.pinned = "false";
+
+          // 如果星标可见，则保持图标为黄色，否则恢复为绿色
+          bookmarkButtonContainer.style.backgroundColor = starsVisible ? "#FFC107" : "#4CAF50";
         }
       }
     });
 
     document.body.appendChild(drawer);
+
 
     const drawerHeader = document.createElement("div");
     drawerHeader.style = `
@@ -833,7 +1025,6 @@
     `;
     closeButton.addEventListener("click", () => {
       drawer.style.right = "-350px";
-      drawer.dataset.pinned = "false";
     });
     drawerHeader.appendChild(closeButton);
     drawer.appendChild(drawerHeader);
@@ -864,14 +1055,14 @@
       listItem.style.backgroundColor = "transparent";
     });
 
-    // 添加拖拽事件处理逻辑
+    // 添加拖拽事件处理逻辑：
     listItem.addEventListener("dragstart", (e) => {
       e.dataTransfer.setData("text/plain", bookmark.id);
       listItem.classList.add("dragging");
       listItem.style.opacity = "0.5";
     });
     listItem.addEventListener("dragend", () => {
-      listItem.classList.remove("dragging");
+      listItem.classList.remove("dragging"); // 添加这行
       listItem.style.opacity = "1";
     });
     listItem.addEventListener("dragover", (e) => {
@@ -890,8 +1081,7 @@
         bookmarkList.insertBefore(draggingElement, nextSibling || null);
       }
     });
-    
-    // 将拖拽后的新顺序保存
+    // 将拖拽后的新顺序保存：
     document.getElementById("bookmark-list").addEventListener("dragend", () => {
       const newOrder = Array.from(document.querySelectorAll('#bookmark-list li')).map(item => item.dataset.bookmarkId);
       bookmarks[currentConversationId] = newOrder.map(id => bookmarks[currentConversationId].find(b => b.id === id));
@@ -970,7 +1160,7 @@
     }
   }
 
-  // Custom notification
+  // Custom confirmation dialog
   function showNotification(message, type = 'info') {
     const notification = document.createElement('div');
     notification.className = 'chatgpt-bookmark-notification';
@@ -1064,10 +1254,12 @@
     bookmarkData.forEach((bookmark) => addBookmarkToDrawer(bookmark));
   }
 
-  // 添加星标到所有消息
-  function addStarButtonsToMessages() {
+
+  // 在toggleStarsVisibility函数中修改添加星标按钮的部分
+  // 修改 toggleStarsVisibility 函数来使用图片
+  function toggleStarsVisibility(visible) {
     const messages = document.querySelectorAll("[data-message-author-role]");
-    
+
     messages.forEach((message) => {
       // 如果message没有ID，为其分配一个
       if (!message.id) {
@@ -1081,40 +1273,51 @@
       // 检查消息是否已有星标按钮
       if (!message.querySelector(".star-button")) {
         const starButton = document.createElement("button");
-        starButton.innerHTML = `☆`;
+
+        // 使用灰色和金色星星图片
+        starButton.innerHTML = `
+        <img src="${chrome.runtime.getURL('icons/grey-star.png')}" 
+             class="star-icon grey" 
+             alt="Add bookmark" 
+             style="width: 16px; height: 16px; display: inline-block;">
+        <img src="${chrome.runtime.getURL('icons/gold-star.png')}" 
+             class="star-icon gold" 
+             alt="Add bookmark" 
+             style="width: 16px; height: 16px; display: none;">
+      `;
+
         starButton.className = "star-button";
         starButton.style = `
-          margin-left: 10px;
-          cursor: pointer;
-          border: none;
-          background: transparent;
-          font-size: 20px;
-          color: #666;
-          transition: transform 0.2s, color 0.2s;
-          display: inline-block;
-        `;
+        margin-left: 10px;
+        cursor: pointer;
+        border: none;
+        background: transparent;
+        transition: transform 0.2s;
+        display: ${visible ? "inline-block" : "none"};
+      `;
         starButton.title = "Add bookmark";
         starButton.dataset.messageId = message.id;
 
-        // 检查是否已经是书签
-        const isBookmarked = checkIfBookmarked(message.id);
-        if (isBookmarked) {
-          starButton.innerHTML = `★`;
-          starButton.style.color = "#FFD700";
-        }
-
         // 悬停效果
         starButton.addEventListener("mouseenter", () => {
-          if (!checkIfBookmarked(message.id)) {
-            starButton.style.transform = "scale(1.2)";
-            starButton.style.color = "#FFD700";
+          starButton.style.transform = "scale(1.2)";
+          // 检查是否已被标记为书签
+          const isBookmarked = checkIfBookmarked(message.id);
+          if (!isBookmarked) {
+            // 显示金色星星
+            starButton.querySelector('.star-icon.grey').style.display = "none";
+            starButton.querySelector('.star-icon.gold').style.display = "inline-block";
           }
         });
 
         starButton.addEventListener("mouseleave", () => {
-          if (!checkIfBookmarked(message.id)) {
+          // 检查是否已被标记为书签
+          const isBookmarked = checkIfBookmarked(message.id);
+          if (!isBookmarked) {
             starButton.style.transform = "scale(1)";
-            starButton.style.color = "#666";
+            // 恢复显示灰色星星
+            starButton.querySelector('.star-icon.grey').style.display = "inline-block";
+            starButton.querySelector('.star-icon.gold').style.display = "none";
           }
         });
 
@@ -1123,14 +1326,17 @@
           const isBookmarked = checkIfBookmarked(message.id);
 
           if (!isBookmarked) {
-            // 添加书签
-            starButton.innerHTML = `★`;
-            starButton.style.color = "#FFD700";
+            // 添加明显的动画效果
             starButton.style.transform = "scale(1.5)";
             setTimeout(() => {
-              starButton.style.transform = "scale(1)";
+              starButton.style.transform = "scale(1.2)";
             }, 200);
 
+            // 永久显示金色星星
+            starButton.querySelector('.star-icon.grey').style.display = "none";
+            starButton.querySelector('.star-icon.gold').style.display = "inline-block";
+
+            // 添加书签
             addBookmark(message);
           }
         });
@@ -1138,6 +1344,17 @@
         // 找到合适的位置添加星标
         const messageHeader = message.querySelector(".flex.items-center") || message;
         messageHeader.appendChild(starButton);
+      } else {
+        // 更新现有星标按钮的可见性
+        const starButton = message.querySelector(".star-button");
+        starButton.style.display = visible ? "inline-block" : "none";
+
+        // 如果已经是书签，确保显示金色星星
+        const isBookmarked = checkIfBookmarked(message.id);
+        if (isBookmarked) {
+          starButton.querySelector('.star-icon.grey').style.display = "none";
+          starButton.querySelector('.star-icon.gold').style.display = "inline-block";
+        }
       }
     });
   }
@@ -1148,7 +1365,7 @@
     return bookmarks[currentConversationId].some(bookmark => bookmark.id === messageId);
   }
 
-  // 添加书签
+  // 修改addBookmark函数以处理已添加的书签
   function addBookmark(message) {
     if (!currentConversationId) {
       currentConversationId = getCurrentConversationId();
@@ -1167,13 +1384,14 @@
     // 检查是否已经添加过这个书签
     const exists = bookmarks[currentConversationId].some(b => b.id === messageId);
     if (exists) {
+      // 已经是书签，可以选择显示提示或者不做任何操作
       showNotification("Already bookmarked", "info");
       return;
     }
 
     const role = message.getAttribute("data-message-author-role");
     const type = role === "user" ? "Question" : "Answer";
-    const content = message.innerText.replace(/[☆★]/g, "").trim();
+    const content = message.innerText.replace("⭐", "").trim();
     const shortContent = content.length > 30 ? content.substring(0, 30) + "..." : content;
 
     // 创建书签对象
@@ -1209,55 +1427,28 @@
         }
 
         const starButton = document.createElement("button");
-        starButton.innerHTML = `☆`;
+        starButton.innerHTML = "⭐";
         starButton.className = "star-button";
-        starButton.style = `
-          margin-left: 10px;
-          cursor: pointer;
-          border: none;
-          background: transparent;
-          font-size: 20px;
-          color: #666;
-          transition: transform 0.2s, color 0.2s;
-          display: inline-block;
-        `;
+        starButton.style.marginLeft = "10px";
+        starButton.style.cursor = "pointer";
+        starButton.style.display = starsVisible ? "inline-block" : "none";
+        starButton.style.border = "none";
+        starButton.style.background = "transparent";
+        starButton.style.fontSize = "16px";
+        starButton.style.transition = "transform 0.2s";
         starButton.title = "Add bookmark";
         starButton.dataset.messageId = message.id;
 
-        // 检查是否已经是书签
-        const isBookmarked = checkIfBookmarked(message.id);
-        if (isBookmarked) {
-          starButton.innerHTML = `★`;
-          starButton.style.color = "#FFD700";
-        }
-
         starButton.addEventListener("mouseenter", () => {
-          if (!checkIfBookmarked(message.id)) {
-            starButton.style.transform = "scale(1.2)";
-            starButton.style.color = "#FFD700";
-          }
+          starButton.style.transform = "scale(1.2)";
         });
 
         starButton.addEventListener("mouseleave", () => {
-          if (!checkIfBookmarked(message.id)) {
-            starButton.style.transform = "scale(1)";
-            starButton.style.color = "#666";
-          }
+          starButton.style.transform = "scale(1)";
         });
 
         starButton.addEventListener("click", () => {
-          const isBookmarked = checkIfBookmarked(message.id);
-
-          if (!isBookmarked) {
-            starButton.innerHTML = `★`;
-            starButton.style.color = "#FFD700";
-            starButton.style.transform = "scale(1.5)";
-            setTimeout(() => {
-              starButton.style.transform = "scale(1)";
-            }, 200);
-
-            addBookmark(message);
-          }
+          addBookmark(message);
         });
 
         const messageHeader = message.querySelector(".flex.items-center") || message;
@@ -1265,5 +1456,6 @@
       }
     });
   }
+
 
 })();

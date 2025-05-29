@@ -7,16 +7,14 @@
     "storage",
     "identity",
     "identity.email",
-    "tabs",
-    "activeTab"
+    "tabs"
   ],
   "host_permissions": [
     "https://chat.openai.com/*",
-    "https://chatgpt.com/*",
+    "https://chatgpt.com/*", 
     "https://sheets.googleapis.com/*",
     "https://www.googleapis.com/*",
-    "https://accounts.google.com/*",
-    "https://*/*"
+    "https://accounts.google.com/*"
   ],
   "oauth2": {
     "client_id": "797486799565-8lguc50rquf0q36pjpf653u63felvnqf.apps.googleusercontent.com",

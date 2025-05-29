@@ -22,6 +22,8 @@ If you have any questions about this Privacy Policy, please contact us.
 > **_NOTE:_** When you upload to Chrome Web Store for Review, please don't contain the "key" field. You only use it locally with `npm run build` command.
 
 
+## Chrome Extension Review Upload Process
+
 
 
 

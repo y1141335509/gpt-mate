@@ -64,27 +64,27 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   }
   
   // Handle CSV fetching to bypass CORS
-  if (request.action === "fetchCSV") {
-    console.log('Processing fetchCSV request for URL:', request.url);
+  // if (request.action === "fetchCSV") {
+  //   console.log('Processing fetchCSV request for URL:', request.url);
     
-    fetch(request.url)
-      .then(response => {
-        if (!response.ok) {
-          throw new Error(`HTTP error: ${response.status} ${response.statusText}`);
-        }
-        return response.text();
-      })
-      .then(data => {
-        console.log('CSV data fetched successfully, sending back to content script');
-        sendResponse({ data: data });
-      })
-      .catch(error => {
-        console.error('CSV fetch error:', error);
-        sendResponse({ error: error.message });
-      });
+  //   fetch(request.url)
+  //     .then(response => {
+  //       if (!response.ok) {
+  //         throw new Error(`HTTP error: ${response.status} ${response.statusText}`);
+  //       }
+  //       return response.text();
+  //     })
+  //     .then(data => {
+  //       console.log('CSV data fetched successfully, sending back to content script');
+  //       sendResponse({ data: data });
+  //     })
+  //     .catch(error => {
+  //       console.error('CSV fetch error:', error);
+  //       sendResponse({ error: error.message });
+  //     });
     
-    return true; // Keep messaging channel open
-  }
+  //   return true; // Keep messaging channel open
+  // }
 });
 
 // Handle installation/update
